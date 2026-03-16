@@ -19,15 +19,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import UserInfoSection from '@/components/UserInfoSection'
+import { useAppKit } from '@/hooks/useAppKit'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePathname } from '@/i18n/navigation'
-import { hasAppKitInstance } from '@/lib/appkit-runtime'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import { signOutAndRedirect } from '@/lib/logout'
 import { useUser } from '@/stores/useUser'
 
 export default function HeaderDropdownUserMenuAuth() {
   const t = useExtracted()
+  const { isReady } = useAppKit()
   const { disconnect } = useDisconnect()
   const user = useUser()
   const pathname = usePathname()
@@ -98,7 +99,7 @@ export default function HeaderDropdownUserMenuAuth() {
   async function handleLogout() {
     handleMenuClose()
 
-    if (!hasAppKitInstance()) {
+    if (!isReady) {
       try {
         await signOutAndRedirect({
           currentPathname: window.location.pathname,

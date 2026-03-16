@@ -115,18 +115,18 @@ describe('appKitProvider SSR guard', () => {
       ),
     )
 
-    expect(mocks.createAppKit).not.toHaveBeenCalled()
-    expect(mocks.setThemeMode).not.toHaveBeenCalled()
-    expect(screen.getByTestId('ready')).toHaveTextContent('no')
+    await waitFor(() => {
+      expect(mocks.createAppKit).toHaveBeenCalledTimes(1)
+      expect(mocks.setThemeMode).toHaveBeenCalledWith('dark')
+      expect(screen.getByTestId('ready')).toHaveTextContent('yes')
+      expect(latestValue?.isReady).toBe(true)
+    })
 
     await act(async () => {
       await latestValue.open()
     })
 
     await waitFor(() => {
-      expect(mocks.createAppKit).toHaveBeenCalledTimes(1)
-      expect(mocks.setThemeMode).toHaveBeenCalledWith('dark')
-      expect(screen.getByTestId('ready')).toHaveTextContent('yes')
       expect(appKitInstance.open).toHaveBeenCalled()
     })
 
