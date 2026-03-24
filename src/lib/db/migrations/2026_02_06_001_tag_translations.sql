@@ -74,12 +74,6 @@ WITH defaults(slug, locale, name) AS (
     ('economy', 'fr', 'Économie'),
     ('economy', 'zh', '经济'),
 
-    ('earnings', 'de', 'Ergebnisse'),
-    ('earnings', 'es', 'Resultados'),
-    ('earnings', 'pt', 'Resultados'),
-    ('earnings', 'fr', 'Résultats'),
-    ('earnings', 'zh', '财报'),
-
     ('elections', 'de', 'Wahlen'),
     ('elections', 'es', 'Elecciones'),
     ('elections', 'pt', 'Eleições'),
