@@ -56,6 +56,10 @@ const PAGE_SIZE = 20
 const BIGGEST_WINS_CACHE = new Map<string, BiggestWinEntry[]>()
 const BIGGEST_WINS_IN_FLIGHT = new Map<string, Promise<BiggestWinEntry[]>>()
 
+interface TimeframePnlBatchResponse {
+  values?: Record<string, number>
+}
+
 async function fetchBiggestWins(category: string, period: string) {
   const params = new URLSearchParams({
     limit: '20',
@@ -175,6 +179,91 @@ function buildLeaderboardScopeKey(filters: LeaderboardFilters, searchQuery: stri
   return `${buildFiltersKey(filters)}:${searchQuery}`
 }
 
+function normalizeWalletAddress(value?: string) {
+  return (value ?? '').trim().toLowerCase()
+}
+
+async function fetchTimeframePnlBatch(
+  userAddresses: string[],
+  period: LeaderboardFilters['period'],
+  signal: AbortSignal,
+): Promise<Map<string, number>> {
+  const response = await fetch('/api/leaderboard/timeframe-pnl', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      period,
+      addresses: userAddresses,
+    }),
+    signal,
+  })
+
+  if (!response.ok) {
+    return new Map()
+  }
+
+  const payload = await response.json() as TimeframePnlBatchResponse
+  if (!payload || typeof payload !== 'object' || !payload.values || typeof payload.values !== 'object') {
+    return new Map()
+  }
+
+  const values = new Map<string, number>()
+  for (const [address, rawValue] of Object.entries(payload.values)) {
+    const normalizedAddress = normalizeWalletAddress(address)
+    if (!normalizedAddress) {
+      continue
+    }
+    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+      values.set(normalizedAddress, rawValue)
+    }
+  }
+
+  return values
+}
+
+async function hydrateEntriesWithPortfolioPnl(
+  entries: LeaderboardEntry[],
+  filters: LeaderboardFilters,
+  signal: AbortSignal,
+): Promise<LeaderboardEntry[]> {
+  if (entries.length === 0) {
+    return entries
+  }
+
+  if (filters.category !== 'overall') {
+    return entries
+  }
+
+  const addresses = Array.from(
+    new Set(
+      entries
+        .map(entry => normalizeWalletAddress(entry.proxyWallet))
+        .filter(address => address.length > 0),
+    ),
+  )
+
+  if (addresses.length === 0) {
+    return entries
+  }
+
+  const pnlByAddress = await fetchTimeframePnlBatch(addresses, filters.period, signal).catch(() => new Map())
+
+  if (pnlByAddress.size === 0) {
+    return entries
+  }
+
+  return entries.map((entry) => {
+    const address = normalizeWalletAddress(entry.proxyWallet)
+    const pnl = pnlByAddress.get(address)
+    if (typeof pnl !== 'number') {
+      return entry
+    }
+    return { ...entry, pnl }
+  })
+}
+
 export default function LeaderboardClient({ initialFilters }: { initialFilters: LeaderboardFilters }) {
   const router = useRouter()
   const user = useUser()
@@ -236,8 +325,13 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
         }
         return response.json()
       })
-      .then((result) => {
-        setEntries(normalizeLeaderboardResponse(result))
+      .then(async (result) => {
+        const normalized = normalizeLeaderboardResponse(result)
+        const hydrated = await hydrateEntriesWithPortfolioPnl(normalized, filters, controller.signal)
+        if (controller.signal.aborted) {
+          return
+        }
+        setEntries(hydrated)
       })
       .catch((_error) => {
         if (controller.signal.aborted) {
@@ -278,9 +372,18 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
         }
         return response.json()
       })
-      .then((result) => {
+      .then(async (result) => {
         const [entry] = normalizeLeaderboardResponse(result)
-        setUserEntry(entry ?? null)
+        if (!entry) {
+          setUserEntry(null)
+          return
+        }
+
+        const [hydrated] = await hydrateEntriesWithPortfolioPnl([entry], filters, controller.signal)
+        if (controller.signal.aborted) {
+          return
+        }
+        setUserEntry(hydrated ?? entry)
       })
       .catch((_error) => {
         if (controller.signal.aborted) {
